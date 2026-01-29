@@ -1,1 +1,169 @@
+#!/bin/bash
+# =========================================================
+# SCRIPT COMPLETO - LABORATÓRIOS 1, 4, 5 e 6
+# Autor: Gabriel Duarte Batista
+# Ambiente: Ubuntu Server
+# =========================================================
+
+# -------------------------------
+# LAB 1 - USUÁRIOS, GRUPOS E PASTAS
+# -------------------------------
+
+# Criação dos grupos
+sudo groupadd desenvolvedores
+sudo groupadd testadores
+
+# Criação dos usuários e associação aos grupos
+sudo useradd -m -g desenvolvedores dev_senior
+sudo useradd -m -g desenvolvedores dev_junior
+sudo useradd -m -g testadores qa_analyst
+sudo usermod -aG testadores dev_senior
+
+# Definição de senhas (será solicitado interativamente)
+sudo passwd dev_senior
+sudo passwd dev_junior
+sudo passwd qa_analyst
+
+# Criação da estrutura de diretórios
+sudo mkdir -p /srv/projetos/backend
+sudo mkdir -p /srv/projetos/frontend
+
+# Definição de dono e permissões
+sudo chown -R dev_senior:desenvolvedores /srv/projetos
+sudo chmod -R 750 /srv/projetos
+
+# -------------------------------
+# CONTROLE DE PROCESSOS (TESTE)
+# -------------------------------
+# Executar como dev_junior:
+# sleep 500 &
+# ps aux | grep sleep
+# sudo kill <PID>
+
+# -------------------------------
+# SCRIPT DE BOAS-VINDAS
+# -------------------------------
+
+sudo tee /usr/local/bin/boasvindas.sh << 'EOF'
+#!/bin/bash
+echo "=========================================="
+echo "Bem-vindo(a) ao Servidor de Desenvolvimento!"
+echo "Data e hora atual: $(date)"
+echo "=========================================="
+EOF
+
+# Permissão de execução
+sudo chmod 755 /usr/local/bin/boasvindas.sh
+
+# Execução automática no login
+echo "/usr/local/bin/boasvindas.sh" | sudo tee -a /etc/profile
+
+# -------------------------------
+# LAB 4 - SSH SEGURO
+# -------------------------------
+
+# Atualização e instalação do SSH
+sudo apt-get update -y
+sudo apt-get install openssh-server -y
+
+# Backup do arquivo de configuração
+sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bkp
+
+# Alteração da porta e bloqueio do root
+sudo sed -i 's/#Port 22/Port 2244/' /etc/ssh/sshd_config
+sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config
+
+# Reinício do serviço SSH
+sudo systemctl restart sshd
+
+# -------------------------------
+# LAB 5 - SAMBA
+# -------------------------------
+
+# Instalação do Samba
+sudo apt-get install samba -y
+
+# Adição dos usuários ao Samba
+sudo smbpasswd -a dev_senior
+sudo smbpasswd -a dev_junior
+
+# Criação do diretório público
+sudo mkdir -p /srv/samba/publico
+sudo chown nobody:nogroup /srv/samba/publico
+sudo chmod 777 /srv/samba/publico
+
+# Backup da configuração do Samba
+sudo cp /etc/samba/smb.conf /etc/samba/smb.conf.bkp
+
+# Configuração dos compartilhamentos
+sudo tee -a /etc/samba/smb.conf << 'EOF'
+
+[Publico]
+comment = Compartilhamento Publico de Arquivos
+path = /srv/samba/publico
+browsable = yes
+writable = yes
+guest ok = yes
+read only = no
+
+[Projetos]
+comment = Acesso restrito para Desenvolvedores
+path = /srv/projetos
+valid users = @desenvolvedores
+read only = no
+browsable = yes
+writable = yes
+EOF
+
+# Reinício dos serviços Samba
+sudo systemctl restart smbd
+sudo systemctl restart nmbd
+
+# Verificação de erros
+testparm
+
+# -------------------------------
+# LAB 6 - APACHE + DNS (BIND9)
+# -------------------------------
+
+# Instalação do Apache
+sudo apt-get install apache2 -y
+
+# Página web de teste
+echo "<h1>Bem-vindo ao Servidor Web da Empresa!</h1>" | sudo tee /var/www/html/index.html
+
+# Instalação do BIND9
+sudo apt-get install bind9 -y
+
+# Configuração da zona DNS
+sudo tee -a /etc/bind/named.conf.local << 'EOF'
+zone "empresa.local" {
+    type master;
+    file "/etc/bind/db.empresa.local";
+};
+EOF
+
+# Arquivo de zona DNS (SUBSTITUA IP_DA_VM)
+sudo tee /etc/bind/db.empresa.local << 'EOF'
+$TTL 604800
+@   IN  SOA ns1.empresa.local. root.empresa.local. (
+        2
+        604800
+        86400
+        2419200
+        604800 )
+@   IN  NS  ns1.empresa.local.
+ns1 IN  A   IP_DA_VM
+www IN  A   IP_DA_VM
+EOF
+
+# Reinício do DNS
+sudo systemctl restart bind9
+
+# Configuração do DNS local
+echo "nameserver 127.0.0.1" | sudo tee /etc/resolv.conf
+
+# Testes finais
+dig www.empresa.local
+curl http://www.empresa.local
 
