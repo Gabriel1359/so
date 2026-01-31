@@ -1,105 +1,58 @@
 #!/bin/bash
-# =========================================================
-# SCRIPT COMPLETO - LABORATÓRIOS 1, 4, 5 e 6
-# Autor: Gabriel Duarte Batista
-# Ambiente: Ubuntu Server
-# =========================================================
+# ==========================================================
+# SCRIPT ÚNICO – LABORATÓRIOS 1, 4, 5 e 6
+# Autor: Gabriel Duarte
+# Descrição: Configuração completa de usuários, SSH, Samba,
+# Apache e DNS (BIND9)
+# ==========================================================
 
-# -------------------------------
-# LAB 1 - USUÁRIOS, GRUPOS E PASTAS
-# -------------------------------
+echo "=== LABORATÓRIO 1: USUÁRIOS, GRUPOS E PERMISSÕES ==="
 
-# Criação dos grupos
-sudo groupadd desenvolvedores
-sudo groupadd testadores
+groupadd desenvolvedores # Cria grupo desenvolvedores
+groupadd testadores # Cria grupo testadores
 
-# Criação dos usuários e associação aos grupos
-sudo useradd -m -g desenvolvedores dev_senior
-sudo useradd -m -g desenvolvedores dev_junior
-sudo useradd -m -g testadores qa_analyst
-sudo usermod -aG testadores dev_senior
+useradd -m -g desenvolvedores dev_senior # Cria usuário dev_senior
+useradd -m -g desenvolvedores dev_junior # Cria usuário dev_junior
+useradd -m -g testadores qa_analyst # Cria usuário qa_analyst
+usermod -aG testadores dev_senior # Adiciona dev_senior ao grupo testadores
 
-# Definição de senhas (será solicitado interativamente)
-sudo passwd dev_senior
-sudo passwd dev_junior
-sudo passwd qa_analyst
+echo "Defina as senhas dos usuários:"
+passwd dev_senior # Senha dev_senior
+passwd dev_junior # Senha dev_junior
+passwd qa_analyst # Senha qa_analyst
 
-# Criação da estrutura de diretórios
-sudo mkdir -p /srv/projetos/backend
-sudo mkdir -p /srv/projetos/frontend
+mkdir -p /srv/projetos/backend /srv/projetos/frontend # Cria diretórios do projeto
+chown -R dev_senior:desenvolvedores /srv/projetos # Define dono e grupo
+chmod -R 750 /srv/projetos # Define permissões corretas
 
-# Definição de dono e permissões
-sudo chown -R dev_senior:desenvolvedores /srv/projetos
-sudo chmod -R 750 /srv/projetos
+echo -e '#!/bin/bash\necho "==========================================="\necho "Bem-vindo(a) ao Servidor de Desenvolvimento!"\necho "Data e hora atual: $(date)"\necho "==========================================="' > /usr/local/bin/boasvindas.sh # Cria script boas-vindas
+chmod 755 /usr/local/bin/boasvindas.sh # Dá permissão de execução
+echo "/usr/local/bin/boasvindas.sh" >> /etc/profile # Executa no login
 
-# -------------------------------
-# CONTROLE DE PROCESSOS (TESTE)
-# -------------------------------
-# Executar como dev_junior:
-# sleep 500 &
-# ps aux | grep sleep
-# sudo kill <PID>
+echo "=== LABORATÓRIO 4: SSH SEGURO ==="
 
-# -------------------------------
-# SCRIPT DE BOAS-VINDAS
-# -------------------------------
+apt-get update -y # Atualiza pacotes
+apt-get install openssh-server -y # Instala OpenSSH
+cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bkp # Backup do SSH
+sed -i 's/#Port 22/Port 2244/' /etc/ssh/sshd_config # Altera porta SSH
+sed -i 's/PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config # Bloqueia root
+systemctl restart sshd # Reinicia SSH
 
-sudo tee /usr/local/bin/boasvindas.sh << 'EOF'
-#!/bin/bash
-echo "=========================================="
-echo "Bem-vindo(a) ao Servidor de Desenvolvimento!"
-echo "Data e hora atual: $(date)"
-echo "=========================================="
-EOF
+echo "=== LABORATÓRIO 5: SAMBA ==="
 
-# Permissão de execução
-sudo chmod 755 /usr/local/bin/boasvindas.sh
+apt-get install samba -y # Instala Samba
+smbpasswd -a dev_senior # Adiciona dev_senior ao Samba
+smbpasswd -a dev_junior # Adiciona dev_junior ao Samba
 
-# Execução automática no login
-echo "/usr/local/bin/boasvindas.sh" | sudo tee -a /etc/profile
+mkdir -p /srv/samba/publico # Cria pasta pública
+chown nobody:nogroup /srv/samba/publico # Define dono
+chmod 777 /srv/samba/publico # Permissões públicas
 
-# -------------------------------
-# LAB 4 - SSH SEGURO
-# -------------------------------
+cp /etc/samba/smb.conf /etc/samba/smb.conf.bkp # Backup Samba
 
-# Atualização e instalação do SSH
-sudo apt-get update -y
-sudo apt-get install openssh-server -y
-
-# Backup do arquivo de configuração
-sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bkp
-
-# Alteração da porta e bloqueio do root
-sudo sed -i 's/#Port 22/Port 2244/' /etc/ssh/sshd_config
-sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config
-
-# Reinício do serviço SSH
-sudo systemctl restart sshd
-
-# -------------------------------
-# LAB 5 - SAMBA
-# -------------------------------
-
-# Instalação do Samba
-sudo apt-get install samba -y
-
-# Adição dos usuários ao Samba
-sudo smbpasswd -a dev_senior
-sudo smbpasswd -a dev_junior
-
-# Criação do diretório público
-sudo mkdir -p /srv/samba/publico
-sudo chown nobody:nogroup /srv/samba/publico
-sudo chmod 777 /srv/samba/publico
-
-# Backup da configuração do Samba
-sudo cp /etc/samba/smb.conf /etc/samba/smb.conf.bkp
-
-# Configuração dos compartilhamentos
-sudo tee -a /etc/samba/smb.conf << 'EOF'
-
+cat <<EOF >> /etc/samba/smb.conf
 [Publico]
-comment = Compartilhamento Publico de Arquivos
+comment = Compartilhamento Publico
 path = /srv/samba/publico
 browsable = yes
 writable = yes
@@ -107,7 +60,7 @@ guest ok = yes
 read only = no
 
 [Projetos]
-comment = Acesso restrito para Desenvolvedores
+comment = Acesso restrito aos desenvolvedores
 path = /srv/projetos
 valid users = @desenvolvedores
 read only = no
@@ -115,55 +68,102 @@ browsable = yes
 writable = yes
 EOF
 
-# Reinício dos serviços Samba
-sudo systemctl restart smbd
-sudo systemctl restart nmbd
+systemctl restart smbd nmbd # Reinicia Samba
+testparm # Valida configuração
 
-# Verificação de erros
-testparm
+echo "=== LABORATÓRIO 6: APACHE + DNS (BIND9) ==="
 
-# -------------------------------
-# LAB 6 - APACHE + DNS (BIND9)
-# -------------------------------
+apt-get install apache2 -y # Instala Apache
+echo "<h1>Bem-vindo ao Servidor Web da Empresa!</h1>" > /var/www/html/index.html # Página web
 
-# Instalação do Apache
-sudo apt-get install apache2 -y
+apt-get install bind9 -y # Instala BIND9
 
-# Página web de teste
-echo "<h1>Bem-vindo ao Servidor Web da Empresa!</h1>" | sudo tee /var/www/html/index.html
-
-# Instalação do BIND9
-sudo apt-get install bind9 -y
-
-# Configuração da zona DNS
-sudo tee -a /etc/bind/named.conf.local << 'EOF'
+cat <<EOF >> /etc/bind/named.conf.local
 zone "empresa.local" {
     type master;
     file "/etc/bind/db.empresa.local";
 };
 EOF
 
-# Arquivo de zona DNS (SUBSTITUA IP_DA_VM)
-sudo tee /etc/bind/db.empresa.local << 'EOF'
-$TTL 604800
-@   IN  SOA ns1.empresa.local. root.empresa.local. (
-        2
-        604800
-        86400
-        2419200
-        604800 )
-@   IN  NS  ns1.empresa.local.
-ns1 IN  A   IP_DA_VM
-www IN  A   IP_DA_VM
+cat <<EOF > /etc/bind/db.empresa.local
+\$TTL 604800
+@ IN SOA ns1.empresa.local. root.empresa.local. (
+    2
+    604800
+    86400
+    2419200
+    604800 )
+@ IN NS ns1.empresa.local.
+ns1 IN A IP_DA_VM
+www IN A IP_DA_VM
 EOF
 
-# Reinício do DNS
-sudo systemctl restart bind9
+systemctl restart bind9 # Reinicia DNS
+sed -i '1inameserver 127.0.0.1' /etc/resolv.conf # DNS local
 
-# Configuração do DNS local
-echo "nameserver 127.0.0.1" | sudo tee /etc/resolv.conf
+echo "=== SCRIPT FINALIZADO COM SUCESSO ==="
+chmod +x laboratorios_completos.sh
+sudo ./laboratorios_completos.sh
+#!/bin/bash
+# =========================================================
+# Script: seguranca_rede.sh
+# Laboratório Prático 7 – Segurança de Rede
+# Firewall com IPTABLES + Proxy SQUID
+# =========================================================
 
-# Testes finais
-dig www.empresa.local
-curl http://www.empresa.local
+echo "=== Iniciando configuração de segurança da rede ==="
 
+# -------------------------------
+# ETAPA 1 – FIREWALL (IPTABLES)
+# -------------------------------
+
+iptables -F                                      # Remove todas as regras existentes
+iptables -X                                      # Remove todas as chains personalizadas
+
+iptables -P INPUT DROP                           # Bloqueia tráfego de entrada
+iptables -P FORWARD DROP                         # Bloqueia encaminhamento
+iptables -P OUTPUT ACCEPT                        # Permite tráfego de saída
+
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT  # Permite conexões já estabelecidas
+iptables -A INPUT -i lo -j ACCEPT                # Permite loopback
+
+iptables -A INPUT -p tcp --dport 2244 -j ACCEPT  # Libera SSH na porta 2244
+iptables -A INPUT -p tcp --dport 80 -j ACCEPT    # Libera HTTP
+iptables -A INPUT -p udp --dport 53 -j ACCEPT    # Libera DNS (UDP)
+iptables -A INPUT -p tcp --dport 53 -j ACCEPT    # Libera DNS (TCP)
+
+iptables -L -n -v                                # Exibe regras aplicadas
+
+# -------------------------------
+# ETAPA 2 – INSTALAÇÃO DO SQUID
+# -------------------------------
+
+apt update                                      # Atualiza pacotes
+apt install squid -y                            # Instala Squid
+
+# -------------------------------
+# ETAPA 2 – SITES BLOQUEADOS
+# -------------------------------
+
+echo ".facebook.com" > /etc/squid/sites_bloqueados.txt    # Bloqueia Facebook
+echo ".twitter.com" >> /etc/squid/sites_bloqueados.txt   # Bloqueia Twitter
+echo ".instagram.com" >> /etc/squid/sites_bloqueados.txt # Bloqueia Instagram
+
+# -------------------------------
+# ETAPA 2 – CONFIGURAÇÃO DO SQUID
+# -------------------------------
+
+sed -i '1iacl sites_bloqueados dstdomain "/etc/squid/sites_bloqueados.txt"' /etc/squid/squid.conf  # Cria ACL
+sed -i '2ihttp_access deny sites_bloqueados' /etc/squid/squid.conf                                 # Nega acesso aos sites
+
+# -------------------------------
+# ETAPA 3 – REINICIAR SERVIÇOS
+# -------------------------------
+
+systemctl restart squid                          # Reinicia Squid
+systemctl status squid --no-pager                # Verifica status do Squid
+
+echo "=== Configuração finalizada com sucesso ==="
+nano seguranca_rede.sh      # Cria o arquivo
+chmod +x seguranca_rede.sh  # Dá permissão de execução
+sudo ./seguranca_rede.sh    # Executa o script
